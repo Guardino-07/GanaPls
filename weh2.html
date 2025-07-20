@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>HNU Turn-by-Turn Navigation</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css" />
+  <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.min.js"></script>
+
+  <script src="https://unpkg.com/@geonet/leaflet-control-openrouteservice"></script>
+
+  <style>
+    body, html {
+      height: 100%;
+      margin: 0;
+    }
+    #map {
+      height: 100%;
+      width: 100%;
+    }
+    #instructions {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      max-height: 200px;
+      overflow-y: auto;
+      background: white;
+      padding: 10px;
+      border-radius: 6px;
+      font-size: 14px;
+      box-shadow: 0 0 10px #00000030;
+      z-index: 999;
+    }
+  </style>
+</head>
+
+<body>
+  <select id="building-select" style="position: absolute; top: 10px; left: 10px; z-index: 1000; padding: 5px;">
+    <option disabled selected>Select a Building</option>
+    <option value="9.649295884532481,123.86859277164733">Bates Building</option>
+    <option value="9.648274323006579,123.867375894612">Elementary Building</option>
+    <option value="9.649258920201365,123.86913815071111">Senior High School Building</option>
+    <option value="9.6501393425521,123.86784628406689">College of Art Sciences Building</option>
+    <option value="9.648836069141659,123.8671386907348">Junior High School Building</option>
+  </select>
+  
+  <button id="start-nav" style="position: absolute; top: 50px; left: 10px; z-index: 1000; padding: 5px;">
+    Start Navigating
+  </button>
+  
+  <div id="map"></div>
+  <div id="instructions">Select a building to get directions.</div>
+
+  <script>
+    const orsApiKey = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImIxNDg4NmIxZDI1MjQ0ZWU4NzIzNTUyN2ZmYzk1M2VhIiwiaCI6Im11cm11cjY0In0=";
+    let destination = null;
+    let destMarker = null;
+    let routingControl = null;
+
+    const map = L.map('map').setView([9.6475, 123.8497], 17);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    document.getElementById('building-select').addEventListener('change', function () {
+      const coords = this.value.split(',').map(s => parseFloat(s.trim()));
+      destination = coords;
+
+      if (destMarker) map.removeLayer(destMarker);
+      destMarker = L.marker(destination).addTo(map).bindPopup("Destination").openPopup();
+    });
+
+    document.getElementById('start-nav').addEventListener('click', function () {
+      if (!destination) {
+        alert("Please select a building first.");
+        return;
+      }
+
+      if (routingControl) map.removeControl(routingControl);
+
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(position => {
+          const userCoords = [position.coords.latitude, position.coords.longitude];
+          map.setView(userCoords, 17);
+
+          L.marker(userCoords).addTo(map).bindPopup("You are here").openPopup();
+
+          routingControl = L.Routing.control({
+            waypoints: [
+              L.latLng(userCoords),
+              L.latLng(destination)
+            ],
+            router: new L.Routing.openrouteservice(orsApiKey, {
+              profile: 'driving-car'
+            }),
+            lineOptions: {
+              styles: [{ color: 'blue', opacity: 0.7, weight: 5 }]
+            },
+            show: false,
+            collapsible: true,
+            addWaypoints: false,
+            draggableWaypoints: false,
+            createMarker: () => null
+          }).addTo(map);
+
+          routingControl.on('routesfound', function (e) {
+            const route = e.routes[0];
+            const instructions = route.instructions || [];
+            const summary = route.summary;
+
+            const container = document.getElementById('instructions');
+            container.innerHTML = `<strong>Estimated Distance:</strong> ${(summary.totalDistance / 1000).toFixed(2)} km<br>
+                                   <strong>Estimated Time:</strong> ${Math.round(summary.totalTime / 60)} mins<br><br>
+                                   <strong>Turn-by-Turn Directions:</strong><br>`;
+
+            instructions.forEach((step, index) => {
+              container.innerHTML += `${index + 1}. ${step.text}<br>`;
+            });
+          });
+
+        }, error => {
+          alert('Location access denied or not available.');
+        });
+      } else {
+        alert("Geolocation is not supported by this browser.");
+      }
+    });
+  </script>
+</body>
+</html>
+<script>
+    // Initialize the OpenRouteService control
+    L.control.openrouteservice({
+      apiKey: orsApiKey,
+      position: 'topright',
+      profile: 'driving-car'
+    }).addTo(map);
+  </script>
