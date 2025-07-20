@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-   <meta charset="UTF-8">
+ <head>
+  <meta charset="UTF-8">
   <title>HNU Turn-by-Turn Navigation</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -12,6 +13,8 @@
   <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.min.js"></script>
 
   <script src="https://unpkg.com/lrm-openrouteservice/dist/lrm-openrouteservice.min.js"></script>
+
+</head>
 
   <style>
     body, html {
@@ -108,20 +111,20 @@
             createMarker: () => null
           }).addTo(map);
 
-          routingControl.on('routesfound', function (e) {
-            const route = e.routes[0];
-            const instructions = route.instructions || [];
-            const summary = route.summary;
+        routingControl.on('routesfound', function(e) {
+  const summary = e.routes[0].summary;
+  const instructions = e.routes[0].instructions || [];
 
-            const container = document.getElementById('instructions');
-            container.innerHTML = `<strong>Estimated Distance:</strong> ${(summary.totalDistance / 1000).toFixed(2)} km<br>
-                                   <strong>Estimated Time:</strong> ${Math.round(summary.totalTime / 60)} mins<br><br>
-                                   <strong>Turn-by-Turn Directions:</strong><br>`;
+  const container = document.getElementById('instructions');
+  container.innerHTML = `<strong>Estimated Distance:</strong> ${summary.totalDistance / 1000} km<br>
+                         <strong>Estimated Time:</strong> ${Math.round(summary.totalTime / 60)} mins<br><br>
+                         <strong>Turn-by-Turn Directions:</strong><br>`;
 
-            instructions.forEach((step, index) => {
-              container.innerHTML += `${index + 1}. ${step.text}<br>`;
-            });
-          });
+  instructions.forEach((step, index) => {
+    container.innerHTML += `${index + 1}. ${step.text}<br>`;
+  });
+});
+
 
         }, error => {
           alert('Location access denied or not available.');
