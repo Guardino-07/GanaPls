@@ -15,7 +15,6 @@
   <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA8DaDHjV3DXElDu82msk24FnDcz9fU5Hw"></script>
   <!-- Load Google router for Leaflet Routing Machine -->
   <script src="https://cdn.jsdelivr.net/npm/lrm-google@1.2.0/dist/lrm-google.min.js"></script>
-  <!-- lrm-google: https://github.com/SimonWaldherr/leaflet-routing-machine-google -->
 
   <style>
     body, html {height: 100%; margin: 0;}
@@ -44,6 +43,7 @@
   <div id="map"></div>
   <div id="instructions">Select a destination above to get turn-by-turn directions from your current location.</div>
   <script>
+    // IMPORTANT: Replace with your real Google Maps API key above!
     let destination = null;
     let destMarker = null;
     let routingControl = null;
@@ -55,7 +55,7 @@
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    // Routing control (only one instance, update waypoints)
+    // Initialize Routing Control (Google Directions)
     routingControl = L.Routing.control({
       waypoints: [],
       router: new L.Routing.Google(),
@@ -107,7 +107,7 @@
           else userMarker = L.marker(userCoords).addTo(map).bindPopup("You are here").openPopup();
           map.setView(userCoords, 17);
 
-          // Update the route
+          // Update the route with your current location and the selected destination
           routingControl.setWaypoints([
             L.latLng(userCoords),
             L.latLng(destination)
