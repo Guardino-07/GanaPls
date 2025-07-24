@@ -15,19 +15,24 @@
     html, body {height: 100%; margin: 0; padding: 0;}
     body {overflow: hidden;}
     #map {height: 100vh; width: 100vw;}
+    #top-controls {
+      position: absolute; z-index: 1001; left: 10px; top: 10px;
+      width: calc(100vw - 20px); max-width: 400px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
     #building-select {
-      position: absolute; z-index: 1001; padding: 8px;
-      left: 10px; top: 10px; background: white; border-radius: 6px; border: 1px solid #aaa;
-      font-size: 1rem;
-      max-width: 80vw;
+      padding: 10px; background: white; border-radius: 6px; border: 1px solid #aaa;
+      font-size: 1rem; max-width: 100%;
     }
     #start-nav-btn {
-      position: absolute; z-index: 1001; left: 10px; top: 55px;
-      padding: 10px 18px; background: #007bff; color: white; border: none; border-radius: 4px;
-      font-size: 1rem; font-weight: bold; cursor: pointer; display: none;
+      padding: 12px 0; background: #007bff; color: white; border: none; border-radius: 4px;
+      font-size: 1rem; font-weight: bold; cursor: pointer; width: 100%;
       box-shadow: 0 2px 8px #00000020;
+      transition: background 0.2s;
     }
-    #start-nav-btn.active { display: block; }
+    #start-nav-btn:disabled {
+      background: #b0b0b0; cursor: not-allowed;
+    }
     #instructions {
       position: absolute; bottom: 10px; left: 10px; right: 10px;
       max-height: 40vh; min-width: 200px; overflow-y: auto;
@@ -37,20 +42,22 @@
     }
     @media (max-width: 600px) {
       #instructions { font-size: 1em; }
-      #building-select, #start-nav-btn { font-size: 1em; }
+      #top-controls { max-width: 95vw; }
     }
   </style>
 </head>
 <body>
-  <select id="building-select">
-    <option disabled selected value="">Select a Destination</option>
-    <option value="9.649295884532481,123.86859277164733">Bates Building</option>
-    <option value="9.648274323006579,123.867375894612">Elementary Building</option>
-    <option value="9.649258920201365,123.86913815071111">Senior High School Building</option>
-    <option value="9.6501393425521,123.86784628406689">College of Art Sciences Building</option>
-    <option value="9.648836069141659,123.8671386907348">Junior High School Building</option>
-  </select>
-  <button id="start-nav-btn">START NAVIGATING</button>
+  <div id="top-controls">
+    <select id="building-select">
+      <option disabled selected value="">Select a Destination</option>
+      <option value="9.649295884532481,123.86859277164733">Bates Building</option>
+      <option value="9.648274323006579,123.867375894612">Elementary Building</option>
+      <option value="9.649258920201365,123.86913815071111">Senior High School Building</option>
+      <option value="9.6501393425521,123.86784628406689">College of Art Sciences Building</option>
+      <option value="9.648836069141659,123.8671386907348">Junior High School Building</option>
+    </select>
+    <button id="start-nav-btn" disabled>START NAVIGATING</button>
+  </div>
   <div id="map"></div>
   <div id="instructions">Select a destination above to get turn-by-turn directions from your current location.</div>
   <script>
@@ -169,7 +176,7 @@
         popupAnchor: [0,-35]
       })}).addTo(map).bindPopup(currentDestinationLabel).openPopup();
 
-      document.getElementById('start-nav-btn').classList.add('active');
+      document.getElementById('start-nav-btn').disabled = false;
       document.getElementById('instructions').innerHTML = "Press <b>START NAVIGATING</b> to get directions from your current location.";
       navStarted = false;
 
