@@ -127,9 +127,9 @@
         }
       }).addTo(map);
 
-      // Remove instructions text, just say "Route loaded"
+      // Just say "Route loaded"
       routingControl.on('routesfound', function () {
-        document.getElementById('instructions').innerHTML = `<strong>Blue route line loaded.</strong>`;
+        document.getElementById('instructions').innerHTML = `Blue route line loaded.`;
       });
 
       routingControl.on('routingerror', function() {
