@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Turn-by-Turn Navigation</title>
+  <title>Turn-by-Turn Navigation (Google Directions)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <!-- Leaflet and Routing Machine CSS/JS -->
@@ -10,11 +10,16 @@
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css" />
   <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.min.js"></script>
-  <script src="https://unpkg.com/lrm-openrouteservice/dist/lrm-openrouteservice.min.js"></script>
+
+  <!-- Load Google Maps JS API (required by plugin) -->
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA8DaDHjV3DXElDu82msk24FnDcz9fU5Hw"></script>
+  <!-- Load Google router for Leaflet Routing Machine -->
+  <script src="https://cdn.jsdelivr.net/npm/lrm-google@1.2.0/dist/lrm-google.min.js"></script>
+  <!-- lrm-google: https://github.com/SimonWaldherr/leaflet-routing-machine-google -->
 
   <style>
-    body, html { height: 100%; margin: 0; }
-    #map { height: 100%; width: 100%; }
+    body, html {height: 100%; margin: 0;}
+    #map {height: 100%; width: 100%;}
     #instructions {
       position: absolute; bottom: 10px; left: 10px;
       max-height: 220px; min-width: 260px; overflow-y: auto;
@@ -39,27 +44,21 @@
   <div id="map"></div>
   <div id="instructions">Select a destination above to get turn-by-turn directions from your current location.</div>
   <script>
-    // ====== Use your own OpenRouteService API Key! ======
-    const orsApiKey = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6Ijk3OWYyOTU4OGNkZDQ2NjhhZWFmOTU0YmIwZTY1YjYxIiwiaCI6Im11cm11cjY0In0=";
-
     let destination = null;
     let destMarker = null;
     let routingControl = null;
     let userMarker = null;
     let watchId = null;
-
-    // Initialize map
     const map = L.map('map').setView([9.6475, 123.8497], 17);
+
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    // Routing control (only one instance)
+    // Routing control (only one instance, update waypoints)
     routingControl = L.Routing.control({
       waypoints: [],
-      router: new L.Routing.openrouteservice(orsApiKey, {
-        profile: 'driving-car'
-      }),
+      router: new L.Routing.Google(),
       lineOptions: {
         styles: [{ color: 'blue', opacity: 0.7, weight: 5 }]
       },
