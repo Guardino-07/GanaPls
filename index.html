@@ -5,35 +5,35 @@
   <title>Turn-by-Turn Navigation (Google Directions)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- Leaflet and Routing Machine CSS/JS -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css" />
-  <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.min.js"></script>
+  <!-- Leaflet CSS/JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css"/>
+  <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
 
-  <!-- Load Google Maps JS API (required by plugin) -->
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA8DaDHjV3DXElDu82msk24FnDcz9fU5Hw"></script>
-  <!-- Load Google router for Leaflet Routing Machine -->
+  <!-- Google Maps JS API (replace with your key) -->
+  <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY"></script>
+  <!-- lrm-google plugin -->
   <script src="https://cdn.jsdelivr.net/npm/lrm-google@1.2.0/dist/lrm-google.min.js"></script>
 
   <style>
-    body, html {height: 100%; margin: 0;}
-    #map {height: 100%; width: 100%;}
+    html, body {height: 100%; margin: 0;}
+    #map {height: 100vh; width: 100vw;}
+    #building-select {
+      position: absolute; z-index: 1000; padding: 5px;
+      left: 10px; top: 10px;
+    }
     #instructions {
       position: absolute; bottom: 10px; left: 10px;
       max-height: 220px; min-width: 260px; overflow-y: auto;
       background: white; padding: 10px; border-radius: 6px;
       font-size: 14px; box-shadow: 0 0 10px #00000030; z-index: 999;
     }
-    #building-select {
-      position: absolute; z-index: 1000; padding: 5px;
-      left: 10px; top: 10px;
-    }
   </style>
 </head>
 <body>
   <select id="building-select">
-    <option disabled selected>Select a Destination</option>
+    <option disabled selected value="">Select a Destination</option>
     <option value="9.649295884532481,123.86859277164733">Bates Building</option>
     <option value="9.648274323006579,123.867375894612">Elementary Building</option>
     <option value="9.649258920201365,123.86913815071111">Senior High School Building</option>
@@ -43,76 +43,90 @@
   <div id="map"></div>
   <div id="instructions">Select a destination above to get turn-by-turn directions from your current location.</div>
   <script>
-    // IMPORTANT: Replace with your real Google Maps API key above!
-    let destination = null;
-    let destMarker = null;
+    // ======== CONFIGURATION =========
+    // Replace the value in the Google Maps JS API script tag above with your actual API key!
+    // ===============================
+
+    let destLatLng = null, destMarker = null, userMarker = null, watchId = null;
     let routingControl = null;
-    let userMarker = null;
-    let watchId = null;
-    const map = L.map('map').setView([9.6475, 123.8497], 17);
+
+    const map = L.map('map').setView([9.649, 123.868], 17);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    // Initialize Routing Control (Google Directions)
-    routingControl = L.Routing.control({
-      waypoints: [],
-      router: new L.Routing.Google(),
-      lineOptions: {
-        styles: [{ color: 'blue', opacity: 0.7, weight: 5 }]
-      },
-      show: false,
-      collapsible: true,
-      addWaypoints: false,
-      draggableWaypoints: false,
-      createMarker: function(i, wp, nWps) {
-        if (i === 0) return L.marker(wp.latLng).bindPopup("You are here");
-        else if (i === nWps - 1) return L.marker(wp.latLng).bindPopup("Destination");
-        return null;
+    // Prepare routing control but don't add to map yet
+    function createRoutingControl(startLatLng, endLatLng) {
+      if (routingControl) {
+        map.removeControl(routingControl);
+        routingControl = null;
       }
-    }).addTo(map);
+      routingControl = L.Routing.control({
+        waypoints: [
+          L.latLng(startLatLng),
+          L.latLng(endLatLng)
+        ],
+        router: new L.Routing.Google(),
+        lineOptions: {
+          styles: [{ color: 'blue', opacity: 0.8, weight: 6 }]
+        },
+        show: false,
+        collapsible: false,
+        addWaypoints: false,
+        draggableWaypoints: false,
+        fitSelectedRoutes: true,
+        createMarker: function(i, wp, nWps) {
+          // Only show destination marker (user marker handled separately)
+          if (i === nWps - 1) {
+            return L.marker(wp.latLng).bindPopup("Destination");
+          }
+          return null;
+        }
+      }).addTo(map);
 
-    routingControl.on('routesfound', function (e) {
-      const route = e.routes[0];
-      const instructions = route.instructions || [];
-      const container = document.getElementById('instructions');
-      container.innerHTML = `<strong>Turn-by-Turn Directions:</strong><br>`;
-      instructions.forEach((step, index) => {
-        container.innerHTML += `${index + 1}. ${step.text}<br>`;
+      routingControl.on('routesfound', function (e) {
+        const route = e.routes[0];
+        const instructions = route.instructions || [];
+        const container = document.getElementById('instructions');
+        container.innerHTML = `<strong>Turn-by-Turn Directions:</strong><br>`;
+        instructions.forEach((step, index) => {
+          container.innerHTML += `${index + 1}. ${step.text}<br>`;
+        });
       });
-    });
+    }
 
     document.getElementById('building-select').addEventListener('change', function () {
-      const coords = this.value.split(',').map(s => parseFloat(s.trim()));
-      destination = coords;
+      if (!this.value) return;
+      // Parse destination coordinates
+      const parts = this.value.split(',');
+      destLatLng = [parseFloat(parts[0]), parseFloat(parts[1])];
 
+      // Place or move destination marker
       if (destMarker) map.removeLayer(destMarker);
-      destMarker = L.marker(destination).addTo(map).bindPopup("Destination").openPopup();
+      destMarker = L.marker(destLatLng).addTo(map).bindPopup("Destination").openPopup();
 
-      if (userMarker) {
-        map.removeLayer(userMarker);
-        userMarker = null;
-      }
-      if (watchId !== null) {
-        navigator.geolocation.clearWatch(watchId);
-        watchId = null;
-      }
+      // Remove existing routing and markers
+      if (routingControl) { map.removeControl(routingControl); routingControl = null; }
+      if (userMarker) { map.removeLayer(userMarker); userMarker = null; }
+      if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
 
+      // Start watching user position and update routing
       if (navigator.geolocation) {
-        watchId = navigator.geolocation.watchPosition(position => {
-          const userCoords = [position.coords.latitude, position.coords.longitude];
-          // Update user marker
-          if (userMarker) userMarker.setLatLng(userCoords);
-          else userMarker = L.marker(userCoords).addTo(map).bindPopup("You are here").openPopup();
-          map.setView(userCoords, 17);
+        watchId = navigator.geolocation.watchPosition(function(position) {
+          const userLatLng = [position.coords.latitude, position.coords.longitude];
 
-          // Update the route with your current location and the selected destination
-          routingControl.setWaypoints([
-            L.latLng(userCoords),
-            L.latLng(destination)
-          ]);
-        }, error => {
+          // Place or move user marker
+          if (userMarker) userMarker.setLatLng(userLatLng);
+          else userMarker = L.marker(userLatLng, {icon: L.icon({iconUrl: "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/images/marker-icon.png", iconAnchor:[13,41]})})
+            .addTo(map).bindPopup("You are here").openPopup();
+
+          // Center map on user
+          map.setView(userLatLng, 17);
+
+          // Update route
+          createRoutingControl(userLatLng, destLatLng);
+        }, function(error) {
           document.getElementById('instructions').innerHTML =
             'Location access denied or not available. Please enable GPS.';
         }, { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 });
