@@ -29,6 +29,7 @@
       font-size: 1rem; font-weight: bold; cursor: pointer; width: 100%;
       box-shadow: 0 2px 8px #00000020;
       transition: background 0.2s;
+      display: block;
     }
     #start-nav-btn:disabled {
       background: #b0b0b0; cursor: not-allowed;
@@ -59,33 +60,30 @@
     <button id="start-nav-btn" disabled>START NAVIGATING</button>
   </div>
   <div id="map"></div>
-  <div id="instructions">Select a destination above to get turn-by-turn directions from your current location.</div>
+  <div id="instructions">Select a destination above to get a blue route line from your current location.</div>
   <script>
-    // Mobile fix: force map to fill viewport and avoid scroll issues
-    document.body.style.height = window.innerHeight + "px";
-    window.addEventListener('resize', function() {
-      document.body.style.height = window.innerHeight + "px";
-    });
-
     let destLatLng = null, destMarker = null, userMarker = null, watchId = null;
     let routingControl = null;
     let navStarted = false;
     let currentDestinationLabel = "";
 
-    // Default map view center
+    // Enable zoom controls and manual zooming
     const map = L.map('map', {
       zoomControl: true,
       attributionControl: false,
-      tap: false
+      tap: false,
+      dragging: true,
+      scrollWheelZoom: true,
+      doubleClickZoom: true,
+      boxZoom: true,
+      keyboard: true
     }).setView([9.649, 123.868], 17);
 
-    // OpenStreetMap tiles
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors',
       maxZoom: 19,
     }).addTo(map);
 
-    // Utility: Fit map to both markers if both are set
     function fitMapToMarkers(userLatLng, destLatLng) {
       if (userLatLng && destLatLng) {
         const bounds = L.latLngBounds([userLatLng, destLatLng]);
@@ -93,7 +91,7 @@
       }
     }
 
-    // Routing with OSRM (free, no key needed)
+    // Remove turn-by-turn text instructions
     function createRoutingControl(startLatLng, endLatLng) {
       if (routingControl) {
         map.removeControl(routingControl);
@@ -114,7 +112,9 @@
         draggableWaypoints: false,
         fitSelectedRoutes: true,
         createMarker: function(i, wp, nWps) {
-          // Only show destination marker (user marker handled separately)
+          if (i === 0) {
+            return null; // Don't show a marker for the user; we'll show our own
+          }
           if (i === nWps - 1) {
             return L.marker(wp.latLng, {icon: L.icon({
               iconUrl: "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/images/marker-icon.png",
@@ -127,27 +127,9 @@
         }
       }).addTo(map);
 
-      routingControl.on('routesfound', function (e) {
-        const route = e.routes[0];
-        let instructions = [];
-        // Routing machine >=3.2.0 uses route.instructions, fallback to route.legs[0].steps
-        if (route.instructions && route.instructions.length) {
-          instructions = route.instructions;
-        } else if (route.legs && route.legs[0] && route.legs[0].steps) {
-          instructions = route.legs[0].steps.map(step => ({
-            text: step.instruction || step.maneuver.instruction || "",
-          }));
-        }
-        const container = document.getElementById('instructions');
-        container.innerHTML = `<strong>Turn-by-Turn Directions:</strong><br>`;
-        if (instructions.length > 0) {
-          instructions.forEach((step, index) => {
-            container.innerHTML += `${index + 1}. ${step.text || step}<br>`;
-          });
-        } else if (route && route.summary && route.summary.totalDistance) {
-          // fallback: show summary if instructions missing
-          container.innerHTML += `Distance: ${(route.summary.totalDistance/1000).toFixed(2)} km<br>`;
-        }
+      // Remove instructions text, just say "Route loaded"
+      routingControl.on('routesfound', function () {
+        document.getElementById('instructions').innerHTML = `<strong>Blue route line loaded.</strong>`;
       });
 
       routingControl.on('routingerror', function() {
@@ -156,13 +138,11 @@
       });
     }
 
-    // Get destination label based on value
     function getDestinationLabel(val) {
       const sel = document.getElementById('building-select');
       return sel.options[sel.selectedIndex].text || "Destination";
     }
 
-    // Handle destination selection
     document.getElementById('building-select').addEventListener('change', function () {
       if (!this.value) return;
       destLatLng = this.value.split(',').map(Number);
@@ -177,30 +157,26 @@
       })}).addTo(map).bindPopup(currentDestinationLabel).openPopup();
 
       document.getElementById('start-nav-btn').disabled = false;
-      document.getElementById('instructions').innerHTML = "Press <b>START NAVIGATING</b> to get directions from your current location.";
+      document.getElementById('instructions').innerHTML = "Press <b>START NAVIGATING</b> to display the blue route line from your current location.";
       navStarted = false;
 
       map.setView(destLatLng, 17);
     });
 
-    // Start navigation when button is pressed
     document.getElementById('start-nav-btn').addEventListener('click', function () {
       if (!destLatLng) return;
       navStarted = true;
       this.blur();
 
-      // Remove existing routing and markers
       if (routingControl) { map.removeControl(routingControl); routingControl = null; }
       if (userMarker) { map.removeLayer(userMarker); userMarker = null; }
       if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
 
-      // Watch user position and update routing
       if (navigator.geolocation) {
         document.getElementById('instructions').innerHTML = "Getting your current location...";
         watchId = navigator.geolocation.watchPosition(function(position) {
           const userLatLng = [position.coords.latitude, position.coords.longitude];
 
-          // Place or move user marker
           if (userMarker) userMarker.setLatLng(userLatLng);
           else userMarker = L.marker(userLatLng, {
             icon: L.icon({
@@ -209,10 +185,8 @@
             })
           }).addTo(map).bindPopup("You are here").openPopup();
 
-          // Fit map to both markers only on initial nav start for mobile
           fitMapToMarkers(userLatLng, destLatLng);
 
-          // Update route
           createRoutingControl(userLatLng, destLatLng);
         }, function(error) {
           document.getElementById('instructions').innerHTML =
@@ -224,10 +198,14 @@
       }
     });
 
-    // Mobile fix: Prevent double-tap zoom when navigating
-    map.on('click', function(e) {
-      if (navStarted) map.doubleClickZoom.disable();
-    });
+    // Allow manual zooming/panning at all times
+    map.touchZoom.enable();
+    map.scrollWheelZoom.enable();
+    map.doubleClickZoom.enable();
+    map.boxZoom.enable();
+    map.keyboard.enable();
+    if (map.tap) map.tap.enable();
+    map.dragging.enable();
 
     // Mobile-friendly: Allow tap for markers
     if ('ontouchstart' in window) {
