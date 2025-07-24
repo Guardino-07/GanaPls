@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Turn-by-Turn Navigation (Google Directions)</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Turn-by-Turn Navigation (OSRM Directions)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
   <!-- Leaflet CSS/JS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
@@ -11,23 +11,33 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css"/>
   <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
 
-  <!-- Google Maps JS API (replace with your key) -->
-  <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA8DaDHjV3DXElDu82msk24FnDcz9fU5Hw&callback=initMap"></script>
-  <!-- lrm-google plugin -->
-  <script src="https://cdn.jsdelivr.net/npm/lrm-google@1.2.0/dist/lrm-google.min.js"></script>
-
   <style>
-    html, body {height: 100%; margin: 0;}
+    html, body {height: 100%; margin: 0; padding: 0;}
+    body {overflow: hidden;}
     #map {height: 100vh; width: 100vw;}
     #building-select {
-      position: absolute; z-index: 1000; padding: 5px;
-      left: 10px; top: 10px;
+      position: absolute; z-index: 1001; padding: 8px;
+      left: 10px; top: 10px; background: white; border-radius: 6px; border: 1px solid #aaa;
+      font-size: 1rem;
+      max-width: 80vw;
     }
+    #start-nav-btn {
+      position: absolute; z-index: 1001; left: 10px; top: 55px;
+      padding: 10px 18px; background: #007bff; color: white; border: none; border-radius: 4px;
+      font-size: 1rem; font-weight: bold; cursor: pointer; display: none;
+      box-shadow: 0 2px 8px #00000020;
+    }
+    #start-nav-btn.active { display: block; }
     #instructions {
-      position: absolute; bottom: 10px; left: 10px;
-      max-height: 220px; min-width: 260px; overflow-y: auto;
-      background: white; padding: 10px; border-radius: 6px;
-      font-size: 14px; box-shadow: 0 0 10px #00000030; z-index: 999;
+      position: absolute; bottom: 10px; left: 10px; right: 10px;
+      max-height: 40vh; min-width: 200px; overflow-y: auto;
+      background: white; padding: 10px; border-radius: 8px;
+      font-size: 1rem; box-shadow: 0 0 10px #00000030; z-index: 1001;
+      word-break: break-word;
+    }
+    @media (max-width: 600px) {
+      #instructions { font-size: 1em; }
+      #building-select, #start-nav-btn { font-size: 1em; }
     }
   </style>
 </head>
@@ -40,23 +50,43 @@
     <option value="9.6501393425521,123.86784628406689">College of Art Sciences Building</option>
     <option value="9.648836069141659,123.8671386907348">Junior High School Building</option>
   </select>
+  <button id="start-nav-btn">START NAVIGATING</button>
   <div id="map"></div>
   <div id="instructions">Select a destination above to get turn-by-turn directions from your current location.</div>
   <script>
-    // ======== CONFIGURATION =========
-    // Replace the value in the Google Maps JS API script tag above with your actual API key!
-    // ===============================
+    // Mobile fix: force map to fill viewport and avoid scroll issues
+    document.body.style.height = window.innerHeight + "px";
+    window.addEventListener('resize', function() {
+      document.body.style.height = window.innerHeight + "px";
+    });
 
     let destLatLng = null, destMarker = null, userMarker = null, watchId = null;
     let routingControl = null;
+    let navStarted = false;
+    let currentDestinationLabel = "";
 
-    const map = L.map('map').setView([9.649, 123.868], 17);
+    // Default map view center
+    const map = L.map('map', {
+      zoomControl: true,
+      attributionControl: false,
+      tap: false
+    }).setView([9.649, 123.868], 17);
 
+    // OpenStreetMap tiles
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors'
+      attribution: '&copy; OpenStreetMap contributors',
+      maxZoom: 19,
     }).addTo(map);
 
-    // Prepare routing control but don't add to map yet
+    // Utility: Fit map to both markers if both are set
+    function fitMapToMarkers(userLatLng, destLatLng) {
+      if (userLatLng && destLatLng) {
+        const bounds = L.latLngBounds([userLatLng, destLatLng]);
+        map.fitBounds(bounds, {padding: [70,70]});
+      }
+    }
+
+    // Routing with OSRM (free, no key needed)
     function createRoutingControl(startLatLng, endLatLng) {
       if (routingControl) {
         map.removeControl(routingControl);
@@ -67,7 +97,7 @@
           L.latLng(startLatLng),
           L.latLng(endLatLng)
         ],
-        router: new L.Routing.Google(),
+        router: L.Routing.osrmv1({serviceUrl: 'https://router.project-osrm.org/route/v1'}),
         lineOptions: {
           styles: [{ color: 'blue', opacity: 0.8, weight: 6 }]
         },
@@ -79,7 +109,12 @@
         createMarker: function(i, wp, nWps) {
           // Only show destination marker (user marker handled separately)
           if (i === nWps - 1) {
-            return L.marker(wp.latLng).bindPopup("Destination");
+            return L.marker(wp.latLng, {icon: L.icon({
+              iconUrl: "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/images/marker-icon.png",
+              iconAnchor: [13,41],
+              iconSize: [25,41],
+              popupAnchor: [0,-35]
+            })}).bindPopup(currentDestinationLabel || "Destination");
           }
           return null;
         }
@@ -87,54 +122,110 @@
 
       routingControl.on('routesfound', function (e) {
         const route = e.routes[0];
-        const instructions = route.instructions || [];
+        let instructions = [];
+        // Routing machine >=3.2.0 uses route.instructions, fallback to route.legs[0].steps
+        if (route.instructions && route.instructions.length) {
+          instructions = route.instructions;
+        } else if (route.legs && route.legs[0] && route.legs[0].steps) {
+          instructions = route.legs[0].steps.map(step => ({
+            text: step.instruction || step.maneuver.instruction || "",
+          }));
+        }
         const container = document.getElementById('instructions');
         container.innerHTML = `<strong>Turn-by-Turn Directions:</strong><br>`;
-        instructions.forEach((step, index) => {
-          container.innerHTML += `${index + 1}. ${step.text}<br>`;
-        });
+        if (instructions.length > 0) {
+          instructions.forEach((step, index) => {
+            container.innerHTML += `${index + 1}. ${step.text || step}<br>`;
+          });
+        } else if (route && route.summary && route.summary.totalDistance) {
+          // fallback: show summary if instructions missing
+          container.innerHTML += `Distance: ${(route.summary.totalDistance/1000).toFixed(2)} km<br>`;
+        }
+      });
+
+      routingControl.on('routingerror', function() {
+        document.getElementById('instructions').innerHTML =
+          "Routing error. Please make sure your location and routing server are accessible.";
       });
     }
 
+    // Get destination label based on value
+    function getDestinationLabel(val) {
+      const sel = document.getElementById('building-select');
+      return sel.options[sel.selectedIndex].text || "Destination";
+    }
+
+    // Handle destination selection
     document.getElementById('building-select').addEventListener('change', function () {
       if (!this.value) return;
-      // Parse destination coordinates
-      const parts = this.value.split(',');
-      destLatLng = [parseFloat(parts[0]), parseFloat(parts[1])];
+      destLatLng = this.value.split(',').map(Number);
+      currentDestinationLabel = getDestinationLabel(this.value);
 
-      // Place or move destination marker
       if (destMarker) map.removeLayer(destMarker);
-      destMarker = L.marker(destLatLng).addTo(map).bindPopup("Destination").openPopup();
+      destMarker = L.marker(destLatLng, {icon: L.icon({
+        iconUrl: "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/images/marker-icon.png",
+        iconAnchor: [13,41],
+        iconSize: [25,41],
+        popupAnchor: [0,-35]
+      })}).addTo(map).bindPopup(currentDestinationLabel).openPopup();
+
+      document.getElementById('start-nav-btn').classList.add('active');
+      document.getElementById('instructions').innerHTML = "Press <b>START NAVIGATING</b> to get directions from your current location.";
+      navStarted = false;
+
+      map.setView(destLatLng, 17);
+    });
+
+    // Start navigation when button is pressed
+    document.getElementById('start-nav-btn').addEventListener('click', function () {
+      if (!destLatLng) return;
+      navStarted = true;
+      this.blur();
 
       // Remove existing routing and markers
       if (routingControl) { map.removeControl(routingControl); routingControl = null; }
       if (userMarker) { map.removeLayer(userMarker); userMarker = null; }
       if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
 
-      // Start watching user position and update routing
+      // Watch user position and update routing
       if (navigator.geolocation) {
+        document.getElementById('instructions').innerHTML = "Getting your current location...";
         watchId = navigator.geolocation.watchPosition(function(position) {
           const userLatLng = [position.coords.latitude, position.coords.longitude];
 
           // Place or move user marker
           if (userMarker) userMarker.setLatLng(userLatLng);
-          else userMarker = L.marker(userLatLng, {icon: L.icon({iconUrl: "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/images/marker-icon.png", iconAnchor:[13,41]})})
-            .addTo(map).bindPopup("You are here").openPopup();
+          else userMarker = L.marker(userLatLng, {
+            icon: L.icon({
+              iconUrl: "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+              iconSize: [25, 41], iconAnchor: [13, 41], popupAnchor: [0, -35]
+            })
+          }).addTo(map).bindPopup("You are here").openPopup();
 
-          // Center map on user
-          map.setView(userLatLng, 17);
+          // Fit map to both markers only on initial nav start for mobile
+          fitMapToMarkers(userLatLng, destLatLng);
 
           // Update route
           createRoutingControl(userLatLng, destLatLng);
         }, function(error) {
           document.getElementById('instructions').innerHTML =
-            'Location access denied or not available. Please enable GPS.';
-        }, { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 });
+            'Location access denied or not available. Please enable GPS/location services.';
+        }, { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 });
       } else {
         document.getElementById('instructions').innerHTML =
           'Geolocation is not supported by this browser.';
       }
     });
+
+    // Mobile fix: Prevent double-tap zoom when navigating
+    map.on('click', function(e) {
+      if (navStarted) map.doubleClickZoom.disable();
+    });
+
+    // Mobile-friendly: Allow tap for markers
+    if ('ontouchstart' in window) {
+      map.tap = true;
+    }
   </script>
 </body>
 </html>
