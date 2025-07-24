@@ -11,6 +11,10 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css" />
   <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.min.js"></script>
   <script src="https://unpkg.com/lrm-openrouteservice/dist/lrm-openrouteservice.min.js"></script>
+  <script src="https://unpkg.com/@geonet/leaflet-control-openrouteservice"></script>
+
+  <!-- Google Maps API for Place Autocomplete -->
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA8DaDHjV3DXElDu82msk24FnDcz9fU5Hw&libraries=places"></script>
 
   <style>
     body, html {
@@ -26,7 +30,7 @@
       bottom: 10px;
       left: 10px;
       max-height: 220px;
-      min-width: 260px;
+      min-width: 250px;
       overflow-y: auto;
       background: white;
       padding: 10px;
@@ -35,12 +39,47 @@
       box-shadow: 0 0 10px #00000030;
       z-index: 999;
     }
-    #building-select {
+    #building-select, #start-nav, #add-destination-btn {
       position: absolute;
       z-index: 1000;
       padding: 5px;
       left: 10px;
-      top: 10px;
+    }
+    #building-select { top: 10px; }
+    #add-destination-btn { top: 50px; }
+    #start-nav { top: 90px; }
+    #destination-modal {
+      display: none;
+      position: fixed;
+      z-index: 2000;
+      left: 0; top: 0; width: 100vw; height: 100vh;
+      background: rgba(0,0,0,0.3);
+      align-items: center; justify-content: center;
+    }
+    #destination-modal .modal-content {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      min-width: 320px;
+      box-shadow: 0 4px 32px #00000030;
+      position: relative;
+    }
+    #destination-modal label {
+      display: block; margin-bottom: 4px;
+    }
+    #destination-modal input[type=text] {
+      width: 100%; padding: 6px; margin-bottom: 10px; border-radius: 4px; border: 1px solid #ccc;
+    }
+    #destination-modal .modal-actions {
+      text-align: right;
+    }
+    #destination-modal .modal-actions button {
+      margin-left: 8px;
+    }
+    #destination-modal .error-message {
+      color: #c03;
+      font-size: 13px;
+      margin-bottom: 10px;
     }
   </style>
 </head>
@@ -54,36 +93,127 @@
     <option value="9.6501393425521,123.86784628406689">College of Art Sciences Building</option>
     <option value="9.648836069141659,123.8671386907348">Junior High School Building</option>
   </select>
+  <button id="add-destination-btn">Search Destination</button>
+  <button id="start-nav">Start Navigation</button>
 
   <div id="map"></div>
-  <div id="instructions">Select a destination above to get turn-by-turn directions from your current location.</div>
+  <div id="instructions">Choose or search a destination, then click "Start Navigation" for step-by-step directions.</div>
+
+  <!-- Modal for destination autocomplete -->
+  <div id="destination-modal">
+    <div class="modal-content">
+      <span id="close-modal" style="position:absolute; top:8px; right:12px; cursor:pointer; font-size:20px;">&times;</span>
+      <form id="destination-form" autocomplete="off">
+        <label for="destination-input">Search destination:</label>
+        <input id="destination-input" name="destination" type="text" placeholder="Type a place or address" required />
+        <div class="error-message" id="modal-error"></div>
+        <div class="modal-actions">
+          <button type="button" id="cancel-modal">Cancel</button>
+          <button type="submit" id="submit-modal">Set Destination</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <script>
     // ====== OpenRouteService API Key ======
     const orsApiKey = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImIxNDg4NmIxZDI1MjQ0ZWU4NzIzNTUyN2ZmYzk1M2VhIiwiaCI6Im11cm11cjY0In0=";
 
+    // ====== Map Initialization ======
     let destination = null;
     let destMarker = null;
     let routingControl = null;
     let userMarker = null;
     let userCoords = null;
+    let customDestination = null;
 
-    // Initialize map
     const map = L.map('map').setView([9.6475, 123.8497], 17);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    // When a destination is selected
+    // ====== Building selection ======
     document.getElementById('building-select').addEventListener('change', function () {
       const coords = this.value.split(',').map(s => parseFloat(s.trim()));
       destination = coords;
 
       if (destMarker) map.removeLayer(destMarker);
       destMarker = L.marker(destination).addTo(map).bindPopup("Destination").openPopup();
+      customDestination = null; // Clear any custom destination on building select
 
-      // Try to get user's current location and route
+      document.getElementById('instructions').textContent =
+        "Ready! Click 'Start Navigation' for turn-by-turn directions.";
+    });
+
+    // ====== Add Custom Destination Modal ======
+    const destinationModal = document.getElementById('destination-modal');
+    const destinationInput = document.getElementById('destination-input');
+    const modalError = document.getElementById('modal-error');
+    let autocomplete;
+    let autocompletePlace = null;
+
+    function initAutocomplete() {
+      if (!window.google || !window.google.maps) return;
+      autocomplete = new google.maps.places.Autocomplete(destinationInput, {
+        fields: ['geometry', 'name', 'formatted_address'],
+      });
+      autocomplete.addListener('place_changed', function() {
+        const place = autocomplete.getPlace();
+        if (!place.geometry || !place.geometry.location) {
+          autocompletePlace = null;
+          modalError.textContent = "No details for the selected place.";
+        } else {
+          autocompletePlace = place;
+          modalError.textContent = "";
+        }
+      });
+    }
+    window.addEventListener('load', initAutocomplete);
+
+    document.getElementById('add-destination-btn').addEventListener('click', function() {
+      destinationModal.style.display = "flex";
+      destinationInput.value = "";
+      modalError.textContent = "";
+      autocompletePlace = null;
+      setTimeout(() => destinationInput.focus(), 250);
+    });
+
+    document.getElementById('close-modal').onclick =
+    document.getElementById('cancel-modal').onclick = function() {
+      destinationModal.style.display = "none";
+    };
+
+    document.getElementById('destination-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+      if (!autocompletePlace) {
+        modalError.textContent = "Please select a valid place from the dropdown.";
+        return;
+      }
+      destination = [
+        autocompletePlace.geometry.location.lat(),
+        autocompletePlace.geometry.location.lng()
+      ];
+      customDestination = {
+        name: autocompletePlace.name,
+        address: autocompletePlace.formatted_address
+      };
+      if (destMarker) map.removeLayer(destMarker);
+      destMarker = L.marker(destination).addTo(map)
+        .bindPopup(`${customDestination.name || "Destination"}<br>${customDestination.address || ""}`)
+        .openPopup();
+      destinationModal.style.display = "none";
+      document.getElementById('instructions').textContent =
+        "Ready! Click 'Start Navigation' for turn-by-turn directions.";
+    });
+
+    // ====== Start Navigation: Geolocate and Route ======
+    document.getElementById('start-nav').addEventListener('click', function () {
+      if (!destination) {
+        alert("Please select or search a destination first.");
+        return;
+      }
+
       if (routingControl) map.removeControl(routingControl);
       if (userMarker) map.removeLayer(userMarker);
 
@@ -122,14 +252,19 @@
             });
           });
         }, error => {
-          document.getElementById('instructions').innerHTML = 
-            'Location access denied or not available. Please enable GPS.';
+          alert('Location access denied or not available.');
         });
       } else {
-        document.getElementById('instructions').innerHTML = 
-          'Geolocation is not supported by this browser.';
+        alert("Geolocation is not supported by this browser.");
       }
     });
+
+    // Optionally, add OpenRouteService Control for direct map interaction (can be removed if not needed)
+    // L.control.openrouteservice({
+    //   apiKey: orsApiKey,
+    //   position: 'topright',
+    //   profile: 'driving-car'
+    // }).addTo(map);
   </script>
 </body>
 </html>
