@@ -13,38 +13,20 @@
   <script src="https://unpkg.com/lrm-openrouteservice/dist/lrm-openrouteservice.min.js"></script>
 
   <style>
-    body, html {
-      height: 100%;
-      margin: 0;
-    }
-    #map {
-      height: 100%;
-      width: 100%;
-    }
+    body, html { height: 100%; margin: 0; }
+    #map { height: 100%; width: 100%; }
     #instructions {
-      position: absolute;
-      bottom: 10px;
-      left: 10px;
-      max-height: 220px;
-      min-width: 260px;
-      overflow-y: auto;
-      background: white;
-      padding: 10px;
-      border-radius: 6px;
-      font-size: 14px;
-      box-shadow: 0 0 10px #00000030;
-      z-index: 999;
+      position: absolute; bottom: 10px; left: 10px;
+      max-height: 220px; min-width: 260px; overflow-y: auto;
+      background: white; padding: 10px; border-radius: 6px;
+      font-size: 14px; box-shadow: 0 0 10px #00000030; z-index: 999;
     }
     #building-select {
-      position: absolute;
-      z-index: 1000;
-      padding: 5px;
-      left: 10px;
-      top: 10px;
+      position: absolute; z-index: 1000; padding: 5px;
+      left: 10px; top: 10px;
     }
   </style>
 </head>
-
 <body>
   <select id="building-select">
     <option disabled selected>Select a Destination</option>
@@ -54,29 +36,25 @@
     <option value="9.6501393425521,123.86784628406689">College of Art Sciences Building</option>
     <option value="9.648836069141659,123.8671386907348">Junior High School Building</option>
   </select>
-
   <div id="map"></div>
   <div id="instructions">Select a destination above to get turn-by-turn directions from your current location.</div>
-
   <script>
-    // ====== OpenRouteService API Key ======
-    const orsApiKey = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImIxNDg4NmIxZDI1MjQ0ZWU4NzIzNTUyN2ZmYzk1M2VhIiwiaCI6Im11cm11cjY0In0=";
+    // ====== Use your own OpenRouteService API Key! ======
+    const orsApiKey = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6Ijk3OWYyOTU4OGNkZDQ2NjhhZWFmOTU0YmIwZTY1YjYxIiwiaCI6Im11cm11cjY0In0=";
 
     let destination = null;
     let destMarker = null;
     let routingControl = null;
     let userMarker = null;
-    let userCoords = null;
     let watchId = null;
 
     // Initialize map
     const map = L.map('map').setView([9.6475, 123.8497], 17);
-
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    // Initialize routing control ONCE and update waypoints instead of recreating it
+    // Routing control (only one instance)
     routingControl = L.Routing.control({
       waypoints: [],
       router: new L.Routing.openrouteservice(orsApiKey, {
@@ -90,12 +68,8 @@
       addWaypoints: false,
       draggableWaypoints: false,
       createMarker: function(i, wp, nWps) {
-        // Only show markers for start and end
-        if (i === 0) {
-          return L.marker(wp.latLng).bindPopup("You are here");
-        } else if (i === nWps - 1) {
-          return L.marker(wp.latLng).bindPopup("Destination");
-        }
+        if (i === 0) return L.marker(wp.latLng).bindPopup("You are here");
+        else if (i === nWps - 1) return L.marker(wp.latLng).bindPopup("Destination");
         return null;
       }
     }).addTo(map);
@@ -110,7 +84,6 @@
       });
     });
 
-    // When a destination is selected
     document.getElementById('building-select').addEventListener('change', function () {
       const coords = this.value.split(',').map(s => parseFloat(s.trim()));
       destination = coords;
@@ -122,43 +95,28 @@
         map.removeLayer(userMarker);
         userMarker = null;
       }
-
-      // Stop any previous GPS watch
       if (watchId !== null) {
         navigator.geolocation.clearWatch(watchId);
         watchId = null;
       }
 
-      // Try to get user's current location and follow it
       if (navigator.geolocation) {
         watchId = navigator.geolocation.watchPosition(position => {
-          userCoords = [position.coords.latitude, position.coords.longitude];
-
-          // Place/update user marker
-          if (userMarker) {
-            userMarker.setLatLng(userCoords);
-          } else {
-            userMarker = L.marker(userCoords).addTo(map).bindPopup("You are here").openPopup();
-          }
-
-          // Center the map on the user as they move
+          const userCoords = [position.coords.latitude, position.coords.longitude];
+          // Update user marker
+          if (userMarker) userMarker.setLatLng(userCoords);
+          else userMarker = L.marker(userCoords).addTo(map).bindPopup("You are here").openPopup();
           map.setView(userCoords, 17);
 
-          // Update the routingControl waypoints for live navigation!
-          if (destination) {
-            routingControl.setWaypoints([
-              L.latLng(userCoords),
-              L.latLng(destination)
-            ]);
-          }
+          // Update the route
+          routingControl.setWaypoints([
+            L.latLng(userCoords),
+            L.latLng(destination)
+          ]);
         }, error => {
           document.getElementById('instructions').innerHTML =
             'Location access denied or not available. Please enable GPS.';
-        }, {
-          enableHighAccuracy: true,
-          maximumAge: 0,
-          timeout: 10000
-        });
+        }, { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 });
       } else {
         document.getElementById('instructions').innerHTML =
           'Geolocation is not supported by this browser.';
