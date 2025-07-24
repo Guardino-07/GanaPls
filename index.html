@@ -76,41 +76,39 @@
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    // Helper: Start routing from user to destination
-    function startRouting(fromCoords, toCoords) {
-      // Remove previous routing
-      if (routingControl) {
-        map.removeControl(routingControl);
-        routingControl = null;
+    // Initialize routing control ONCE and update waypoints instead of recreating it
+    routingControl = L.Routing.control({
+      waypoints: [],
+      router: new L.Routing.openrouteservice(orsApiKey, {
+        profile: 'driving-car'
+      }),
+      lineOptions: {
+        styles: [{ color: 'blue', opacity: 0.7, weight: 5 }]
+      },
+      show: false,
+      collapsible: true,
+      addWaypoints: false,
+      draggableWaypoints: false,
+      createMarker: function(i, wp, nWps) {
+        // Only show markers for start and end
+        if (i === 0) {
+          return L.marker(wp.latLng).bindPopup("You are here");
+        } else if (i === nWps - 1) {
+          return L.marker(wp.latLng).bindPopup("Destination");
+        }
+        return null;
       }
-      routingControl = L.Routing.control({
-        waypoints: [
-          L.latLng(fromCoords),
-          L.latLng(toCoords)
-        ],
-        router: new L.Routing.openrouteservice(orsApiKey, {
-          profile: 'driving-car'
-        }),
-        lineOptions: {
-          styles: [{ color: 'blue', opacity: 0.7, weight: 5 }]
-        },
-        show: false,
-        collapsible: true,
-        addWaypoints: false,
-        draggableWaypoints: false,
-        createMarker: () => null
-      }).addTo(map);
+    }).addTo(map);
 
-      routingControl.on('routesfound', function (e) {
-        const route = e.routes[0];
-        const instructions = route.instructions || [];
-        const container = document.getElementById('instructions');
-        container.innerHTML = `<strong>Turn-by-Turn Directions:</strong><br>`;
-        instructions.forEach((step, index) => {
-          container.innerHTML += `${index + 1}. ${step.text}<br>`;
-        });
+    routingControl.on('routesfound', function (e) {
+      const route = e.routes[0];
+      const instructions = route.instructions || [];
+      const container = document.getElementById('instructions');
+      container.innerHTML = `<strong>Turn-by-Turn Directions:</strong><br>`;
+      instructions.forEach((step, index) => {
+        container.innerHTML += `${index + 1}. ${step.text}<br>`;
       });
-    }
+    });
 
     // When a destination is selected
     document.getElementById('building-select').addEventListener('change', function () {
@@ -120,14 +118,15 @@
       if (destMarker) map.removeLayer(destMarker);
       destMarker = L.marker(destination).addTo(map).bindPopup("Destination").openPopup();
 
+      if (userMarker) {
+        map.removeLayer(userMarker);
+        userMarker = null;
+      }
+
       // Stop any previous GPS watch
       if (watchId !== null) {
         navigator.geolocation.clearWatch(watchId);
         watchId = null;
-      }
-      if (userMarker) {
-        map.removeLayer(userMarker);
-        userMarker = null;
       }
 
       // Try to get user's current location and follow it
@@ -145,9 +144,12 @@
           // Center the map on the user as they move
           map.setView(userCoords, 17);
 
-          // Each time the user moves, update the route
+          // Update the routingControl waypoints for live navigation!
           if (destination) {
-            startRouting(userCoords, destination);
+            routingControl.setWaypoints([
+              L.latLng(userCoords),
+              L.latLng(destination)
+            ]);
           }
         }, error => {
           document.getElementById('instructions').innerHTML =
